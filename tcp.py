@@ -49,7 +49,7 @@ class Servidor:
             header = make_header(new_src_port, new_dst_port, seq,
                                  seq_no + 1, FLAGS_SYN | FLAGS_ACK)
             header = fix_checksum(header, new_src_addr, new_dst_addr)
-            self.rede.enviar(header, src_addr)
+            self.rede.enviar(header, new_dst_addr)
             if self.callback:
                 self.callback(conexao)
         elif id_conexao in self.conexoes:
@@ -68,7 +68,7 @@ class Conexao:
         self.seq_no = seq_no
         self.ack_no = ack_no
         # um timer pode ser criado assim; esta linha é só um exemplo e pode ser removida
-        self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
+        # self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
         # self.timer.cancel()   # é possível cancelar o timer chamando esse método; esta linha é só um exemplo e pode ser removida
 
     def _exemplo_timer(self):
@@ -81,23 +81,24 @@ class Conexao:
         # garantir que eles não sejam duplicados e que tenham sido recebidos em ordem.
         if(seq_no != self.seq_no):
             return
-        self.seq_no += len(payload)
-
-        (src_addr, src_port, dst_addr, dst_port) = self.id_conexao
-
-        new_src_addr = dst_addr
-        new_dst_addr = src_addr
-
-        new_src_port = dst_port
-        new_dst_port = src_port
-
-        header = make_header(new_src_port, new_dst_port, self.ack_no,
-                             self.seq_no, FLAGS_ACK)
-        header = fix_checksum(header, new_src_addr, new_dst_addr)
-        self.servidor.rede.enviar(header, new_dst_addr)
 
         self.callback(self, payload)
-        print('recebido payload: %r' % payload)
+        if(len(payload) != 0):
+            self.seq_no += len(payload)
+
+            (src_addr, src_port, dst_addr, dst_port) = self.id_conexao
+
+            new_src_addr = dst_addr
+            new_dst_addr = src_addr
+
+            new_src_port = dst_port
+            new_dst_port = src_port
+
+            header = make_header(new_src_port, new_dst_port, ack_no,
+                                 self.seq_no, flags | FLAGS_ACK)
+            header = fix_checksum(header, new_src_addr, new_dst_addr)
+            self.servidor.rede.enviar(header, new_dst_addr)
+            print('recebido payload: %r' % payload)
 
     # Os métodos abaixo fazem parte da API
 
@@ -116,7 +117,6 @@ class Conexao:
         # Chame self.servidor.rede.enviar(segmento, dest_addr) para enviar o segmento
         # que você construir para a camada de rede.
         if(len(dados) > MSS):
-            print("aqui")
             self.enviar(dados[:MSS])
             self.enviar(dados[MSS:])
         else:
@@ -130,10 +130,10 @@ class Conexao:
 
             header = make_header(new_src_port, new_dst_port, self.ack_no,
                                  self.seq_no, FLAGS_ACK)
-            header = fix_checksum(header, new_src_addr, new_dst_addr)
-            self.servidor.rede.enviar(header+dados, new_dst_addr)
+            header = fix_checksum(header+dados, new_src_addr, new_dst_addr)
+            self.servidor.rede.enviar(header, new_dst_addr)
+
             self.ack_no += len(dados)
-            pass
 
     def fechar(self):
         """
