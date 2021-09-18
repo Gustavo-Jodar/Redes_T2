@@ -1,5 +1,6 @@
 import asyncio
 from tcputils import *
+import random
 
 
 class Servidor:
@@ -28,7 +29,7 @@ class Servidor:
             print('descartando segmento com checksum incorreto')
             return
 
-        payload = segment[4*(flags>>12):]
+        payload = segment[4*(flags >> 12):]
         id_conexao = (src_addr, src_port, dst_addr, dst_port)
 
         if (flags & FLAGS_SYN) == FLAGS_SYN:
@@ -37,6 +38,18 @@ class Servidor:
             conexao = self.conexoes[id_conexao] = Conexao(self, id_conexao)
             # TODO: você precisa fazer o handshake aceitando a conexão. Escolha se você acha melhor
             # fazer aqui mesmo ou dentro da classe Conexao.
+            seq = random.randint(1, 9999999)
+
+            new_src_addr = dst_addr
+            new_dst_addr = src_addr
+
+            new_src_port = dst_port
+            new_dst_port = src_port
+
+            header = make_header(new_src_port, new_dst_port, seq,
+                                 seq_no + 1, FLAGS_SYN | FLAGS_ACK)
+            header = fix_checksum(header, new_src_addr, new_dst_addr)
+            self.rede.enviar(header, src_addr)
             if self.callback:
                 self.callback(conexao)
         elif id_conexao in self.conexoes:
@@ -52,8 +65,9 @@ class Conexao:
         self.servidor = servidor
         self.id_conexao = id_conexao
         self.callback = None
-        self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)  # um timer pode ser criado assim; esta linha é só um exemplo e pode ser removida
-        #self.timer.cancel()   # é possível cancelar o timer chamando esse método; esta linha é só um exemplo e pode ser removida
+        # um timer pode ser criado assim; esta linha é só um exemplo e pode ser removida
+        self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
+        # self.timer.cancel()   # é possível cancelar o timer chamando esse método; esta linha é só um exemplo e pode ser removida
 
     def _exemplo_timer(self):
         # Esta função é só um exemplo e pode ser removida
