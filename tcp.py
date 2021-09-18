@@ -56,10 +56,6 @@ class Servidor:
         elif id_conexao in self.conexoes:
             # Passa para a conexão adequada se ela já estiver estabelecida
             self.conexoes[id_conexao]._rdt_rcv(seq_no, ack_no, flags, payload)
-            header = make_header(new_src_port, new_dst_port, 1,
-                                 self.conexoes[id_conexao].seq_no, FLAGS_ACK)
-            header = fix_checksum(header, new_src_addr, new_dst_addr)
-            self.rede.enviar(header, src_addr)
         else:
             print('%s:%d -> %s:%d (pacote associado a conexão desconhecida)' %
                   (src_addr, src_port, dst_addr, dst_port))
@@ -86,6 +82,20 @@ class Conexao:
         if(seq_no != self.seq_no):
             return
         self.seq_no += len(payload)
+
+        (src_addr, src_port, dst_addr, dst_port) = self.id_conexao
+
+        new_src_addr = dst_addr
+        new_dst_addr = src_addr
+
+        new_src_port = dst_port
+        new_dst_port = src_port
+
+        header = make_header(new_src_port, new_dst_port, 1,
+                             self.seq_no, FLAGS_ACK)
+        header = fix_checksum(header, new_src_addr, new_dst_addr)
+        self.servidor.rede.enviar(header, new_dst_addr)
+
         self.callback(self, payload)
         print('recebido payload: %r' % payload)
 
