@@ -68,30 +68,50 @@ class Conexao:
         self.seq_no = seq_no
         self.ack_no = ack_no
         # um timer pode ser criado assim; esta linha é só um exemplo e pode ser removida
+        self.timer = None
+        self.buffer = []
         # self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
         # self.timer.cancel()   # é possível cancelar o timer chamando esse método; esta linha é só um exemplo e pode ser removida
 
+    def stop_timer(self):
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
+
+    def start_timer(self):
+        self.stop_timer()
+        self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
+
     def _exemplo_timer(self):
         # Esta função é só um exemplo e pode ser removida
-        print('Este é um exemplo de como fazer um timer')
+        self.servidor.rede.enviar(self.buffer[0], self.id_conexao[2])
+        self.start_timer()
+        # print('Este é um exemplo de como fazer um timer')
 
     def _rdt_rcv(self, seq_no, ack_no, flags, payload):
         # TODO: trate aqui o recebimento de segmentos provenientes da camada de rede.
         # Chame self.callback(self, dados) para passar dados para a camada de aplicação após
         # garantir que eles não sejam duplicados e que tenham sido recebidos em ordem.
+        if (seq_no > self.seq_no - 1 and ((flags & FLAGS_ACK) == FLAGS_ACK)):
+            if len(self.buffer) > 0:
+                self.buffer.pop(0)
+                if len(self.buffer) == 0:
+                    self.stop_timer()
+                else:
+                    self.start_timer()
         if(seq_no != self.seq_no):
             return
 
+        (src_addr, src_port, dst_addr, dst_port) = self.id_conexao
+
+        new_src_addr = dst_addr
+        new_dst_addr = src_addr
+
+        new_src_port = dst_port
+        new_dst_port = src_port
+
         if (flags & FLAGS_FIN) == FLAGS_FIN:
             self.seq_no += 1
-
-            (src_addr, src_port, dst_addr, dst_port) = self.id_conexao
-
-            new_src_addr = dst_addr
-            new_dst_addr = src_addr
-
-            new_src_port = dst_port
-            new_dst_port = src_port
 
             header = make_header(new_src_port, new_dst_port, ack_no,
                                  self.seq_no, FLAGS_ACK)
@@ -102,14 +122,6 @@ class Conexao:
         self.callback(self, payload)
         if(len(payload) != 0):
             self.seq_no += len(payload)
-
-            (src_addr, src_port, dst_addr, dst_port) = self.id_conexao
-
-            new_src_addr = dst_addr
-            new_dst_addr = src_addr
-
-            new_src_port = dst_port
-            new_dst_port = src_port
 
             header = make_header(new_src_port, new_dst_port, ack_no,
                                  self.seq_no, flags | FLAGS_ACK)
@@ -151,6 +163,10 @@ class Conexao:
             self.servidor.rede.enviar(header, new_dst_addr)
 
             self.ack_no += len(dados)
+            self.buffer.append(header)
+
+        if not self.timer:
+            self.start_timer()
 
     def fechar(self):
         """
