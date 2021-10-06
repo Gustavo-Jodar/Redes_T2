@@ -1,6 +1,7 @@
 import asyncio
 from tcputils import *
 import random
+import time
 
 
 class Servidor:
@@ -70,6 +71,11 @@ class Conexao:
         # um timer pode ser criado assim; esta linha é só um exemplo e pode ser removida
         self.timer = None
         self.buffer = []
+        self.sendedMessageTime = None
+        self.SampleRTT = None
+        self.DevRTT = None
+        self.EstimatedRTT = None
+        self.TimeoutInterval = 1
         # self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
         # self.timer.cancel()   # é possível cancelar o timer chamando esse método; esta linha é só um exemplo e pode ser removida
 
@@ -80,11 +86,13 @@ class Conexao:
 
     def start_timer(self):
         self.stop_timer()
-        self.timer = asyncio.get_event_loop().call_later(1, self._exemplo_timer)
+        self.timer = asyncio.get_event_loop().call_later(
+            self.TimeoutInterval, self._exemplo_timer)
 
     def _exemplo_timer(self):
         # Esta função é só um exemplo e pode ser removida
         self.servidor.rede.enviar(self.buffer[0], self.id_conexao[2])
+        self.sendedMessageTime = None
         self.start_timer()
         # print('Este é um exemplo de como fazer um timer')
 
@@ -93,6 +101,18 @@ class Conexao:
         # Chame self.callback(self, dados) para passar dados para a camada de aplicação após
         # garantir que eles não sejam duplicados e que tenham sido recebidos em ordem.
         if (seq_no > self.seq_no - 1 and ((flags & FLAGS_ACK) == FLAGS_ACK)):
+
+            if(self.sendedMessageTime is not None):
+                self.SampleRTT = time.time() - self.sendedMessageTime
+                if((self.DevRTT is None) | (self.EstimatedRTT is None)):
+                    self.EstimatedRTT = self.SampleRTT
+                    self.DevRTT = self.SampleRTT / 2
+                else:
+                    self.EstimatedRTT = ((1 - 0.125) *
+                                         self.EstimatedRTT) + (0.125 * self.SampleRTT)
+                    self.DevRTT = ((1 - 0.25) * self.DevRTT) + (0.25 *
+                                                                abs(self.SampleRTT - self.EstimatedRTT))
+                self.TimeoutInterval = self.EstimatedRTT + (4*self.DevRTT)
             if len(self.buffer) > 0:
                 self.buffer.pop(0)
                 if len(self.buffer) == 0:
@@ -160,6 +180,7 @@ class Conexao:
             header = make_header(new_src_port, new_dst_port, self.ack_no,
                                  self.seq_no, FLAGS_ACK)
             header = fix_checksum(header+dados, new_src_addr, new_dst_addr)
+            self.sendedMessageTime = time.time()
             self.servidor.rede.enviar(header, new_dst_addr)
 
             self.ack_no += len(dados)
